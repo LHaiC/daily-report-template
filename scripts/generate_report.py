@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import pathlib
@@ -12,12 +13,30 @@ import urllib.error
 import urllib.request
 from typing import Any, Dict, Optional
 
+# Import environment manager
+try:
+    import manage_env
+except ImportError:
+    # If not found (e.g. running in CI/Docker without full repo context?), create a dummy
+    class manage_env:
+        @staticmethod
+        def get_env(key, default=None):
+            return os.getenv(key, default)
+
 
 DEFAULT_SYSTEM_PROMPT = """You are a rigorous technical writing assistant.
-Turn rough notes into ONE structured daily report in Markdown.
+Turn rough notes into ONE structured daily report in Markdown with a YAML frontmatter block.
 
 Output requirements:
-1) Use this exact section order:
+1) Start with a YAML frontmatter block exactly like this:
+---
+title: "Short Summary Title"
+slug: "short-summary-title"
+tags: ["tag1", "tag2"]
+status: "completed"
+---
+
+2) Follow with the report content using this exact section order:
    - ## What I Did Today
    - ## Problems / Blockers
    - ## Root Cause
@@ -25,15 +44,18 @@ Output requirements:
    - ## Key Learnings
    - ## Metrics
    - ## Next Steps (Tomorrow)
-2) Keep it concise and factual.
-3) If information is missing, write "N/A" for that bullet.
-4) Keep language in the same language as input notes when possible.
-5) Return only final answer. Do not include reasoning or thinking process.
+
+3) Keep it concise and factual.
+4) The 'slug' in frontmatter should be a URL-friendly version of the title (lowercase, dashes only).
+5) If information is missing, write "N/A" for that bullet.
+6) Return only final answer. Do not include reasoning or thinking process.
 """
 
 
 def getenv(name: str, default: Optional[str] = None, required: bool = False) -> str:
-    value = os.getenv(name)
+    # Use manage_env to prioritize local secrets > os.environ
+    value = manage_env.get_env(name, default)
+
     # Treat empty string as unset, use default
     if not value or value.strip() == "":
         value = default
@@ -47,6 +69,112 @@ def slugify(s: str) -> str:
     s = re.sub(r"[^a-z0-9\-_\u4e00-\u9fff]+", "-", s)
     s = re.sub(r"-{2,}", "-", s).strip("-")
     return s or "note"
+
+
+def normalize_tag(tag: str) -> str:
+    tag = tag.strip().lower()
+    tag = tag.lstrip("#")
+    tag = re.sub(r"[^a-z0-9\-_\u4e00-\u9fff]+", "-", tag)
+    tag = re.sub(r"-{2,}", "-", tag).strip("-")
+    return tag
+
+
+def compute_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def compute_hash_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def load_report_hash_index(daily_root: pathlib.Path) -> set[str]:
+    index_path = daily_root / ".report_hashes.json"
+    if not index_path.exists():
+        return set()
+    try:
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+    if isinstance(data, list):
+        return {str(item) for item in data if item}
+    if isinstance(data, dict):
+        return {str(k) for k in data.keys()}
+    return set()
+
+
+def update_report_hash_index(daily_root: pathlib.Path, input_hash: str) -> None:
+    daily_root.mkdir(parents=True, exist_ok=True)
+    index_path = daily_root / ".report_hashes.json"
+    hashes = load_report_hash_index(daily_root)
+    hashes.add(input_hash)
+    index_path.write_text(json.dumps(sorted(hashes)), encoding="utf-8")
+
+
+def parse_frontmatter(text: str) -> Dict[str, str]:
+    lines = text.splitlines()
+    if len(lines) < 3 or lines[0].strip() != "---":
+        return {}
+    data: Dict[str, str] = {}
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if ":" not in line:
+            continue
+        key, val = line.split(":", 1)
+        data[key.strip().lower()] = val.strip()
+    return data
+
+
+def strip_frontmatter(text: str) -> str:
+    lines = text.splitlines()
+    if len(lines) < 3 or lines[0].strip() != "---":
+        return text
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return "\n".join(lines[i + 1 :]).lstrip()
+    return text
+
+
+def extract_title_tags(text: str) -> tuple[str, list[str], str]:
+    lines = text.splitlines()
+    title = ""
+    tags: list[str] = []
+    cleaned: list[str] = []
+    consumed = 0
+    for line in lines[:6]:
+        if line.lower().startswith("title:"):
+            title = line.split(":", 1)[1].strip()
+            consumed += 1
+            continue
+        if line.lower().startswith("tags:"):
+            raw = line.split(":", 1)[1].strip()
+            raw = raw.strip("[]")
+            parts = [p.strip() for p in raw.split(",") if p.strip()]
+            tags = [normalize_tag(p) for p in parts if normalize_tag(p)]
+            consumed += 1
+            continue
+        break
+    if consumed:
+        cleaned = lines[consumed:]
+    else:
+        cleaned = lines
+
+    if not title:
+        for line in cleaned:
+            if line.startswith("# "):
+                title = line[2:].strip()
+                break
+    if not tags:
+        for line in cleaned[:12]:
+            if line.lower().startswith("tags:"):
+                raw = line.split(":", 1)[1].strip()
+                raw = raw.strip("[]")
+                parts = [p.strip() for p in raw.split(",") if p.strip()]
+                tags = [normalize_tag(p) for p in parts if normalize_tag(p)]
+                break
+    tags = [t for t in tags if t]
+    tags = sorted(set(tags))
+    return title, tags, "\n".join(cleaned).lstrip()
 
 
 def extract_by_path(data: Any, path: str) -> Any:
@@ -289,7 +417,10 @@ Raw notes:
 {raw_notes}
 
 Please generate a structured daily report in Markdown.
-Add a title line at top: '# Daily Report - {date_str}'.
+At the very top, include two single-line fields:
+Title: <short, specific title>
+Tags: <comma-separated, 2-6 tags>
+Add a title line after that: '# Daily Report - {date_str}'.
 Use the required section order exactly.
 Use bullet lists in each section.
 """
@@ -350,6 +481,9 @@ def main() -> int:
         "--source-type", default="manual", choices=["manual", "commit", "issue"]
     )
     parser.add_argument("--source-id", default="local")
+    parser.add_argument(
+        "--force", action="store_true", help="Force regeneration even if hash matches"
+    )
     args = parser.parse_args()
 
     input_path = pathlib.Path(args.input)
@@ -358,18 +492,139 @@ def main() -> int:
         return 2
 
     raw_notes = input_path.read_text(encoding="utf-8")
+    input_hash = compute_hash(raw_notes)
     system_prompt = getenv("REPORT_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT)
 
     user_prompt = build_user_prompt(
         raw_notes, args.source_type, args.source_id, args.date
     )
-    text = call_cloud_api(user_prompt=user_prompt, system_prompt=system_prompt)
-    text = ensure_minimum_sections(text, args.date)
-
     out = pathlib.Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(text + ("\n" if not text.endswith("\n") else ""), encoding="utf-8")
-    print(f"Wrote report: {out}")
+
+    # Idempotency check (prefer hash index)
+    if not args.force:
+        hash_index = load_report_hash_index(out.parent)
+        if input_hash in hash_index:
+            print(
+                f"No changes detected for: {out} (Hash match in index). Use --force to override."
+            )
+            return 0
+        if out.exists():
+            existing = out.read_text(encoding="utf-8")
+            meta = parse_frontmatter(existing)
+            # Check if the input hash matches the one in the existing file
+            if meta.get("input_hash") == input_hash:
+                print(
+                    f"No changes detected for: {out} (Hash match). Use --force to override."
+                )
+                return 0
+
+    text = call_cloud_api(user_prompt=user_prompt, system_prompt=system_prompt)
+
+    # Parse the returned text to find the "slug" or "title" to determine filename
+    meta = parse_frontmatter(text)
+
+    # 1. Extract Fields
+    title = meta.get("title", "")
+    slug = meta.get("slug", "")
+    if slug:
+        slug = slug.strip().strip('"').strip("'")
+
+    tags_str = meta.get(
+        "tags", "[]"
+    )  # Expecting string like '["a", "b"]' or plain list
+
+    # 2. Normalize Slug
+    # If LLM didn't provide slug, try to make one from title
+    if not slug and title:
+        slug = slugify(title)
+
+    # Fallback to existing logic if still empty
+    if not slug:
+        # existing extract_title_tags logic as backup
+        extracted_title, extracted_tags, cleaned = extract_title_tags(text)
+        slug = slugify(extracted_title) if extracted_title else "daily-report"
+        title = extracted_title if not title else title
+        # merge tags
+        if not tags_str or tags_str == "[]":
+            tags = extracted_tags
+        else:
+            # re-parse string tags if needed
+            pass
+
+    # 3. Construct Final Path
+    # The workflow passes a default --output path (e.g. .../YYYY-MM-DD-issue-123.md)
+    # We want to respect the directory but change the filename if we found a better slug.
+    out_path = pathlib.Path(args.output)
+    out_dir = out_path.parent
+
+    # Only rename if we got a valid meaningful slug from LLM
+    # and it's not just the default "daily-report"
+    if slug and slug != "daily-report" and slug != "note":
+        new_filename = f"{args.date}-{slug}.md"
+        final_output_path = out_dir / new_filename
+    else:
+        final_output_path = out_path
+
+    # Clean the text again just in case
+    _, _, cleaned = extract_title_tags(text)
+    cleaned = ensure_minimum_sections(cleaned, args.date)
+
+    if not title:
+        title = f"Daily Report - {args.date}"
+
+    # --- Validation / Quality Gate ---
+    # Parse tags from the meta dict if possible, else rely on extraction
+    # We need a list for the frontmatter reconstruction
+    final_tags = []
+    if isinstance(tags_str, list):
+        final_tags = tags_str
+    elif isinstance(tags_str, str):
+        # basic cleanup of string representation
+        t_clean = tags_str.strip("[]").replace('"', "").replace("'", "")
+        final_tags = [t.strip() for t in t_clean.split(",") if t.strip()]
+
+    is_standardized = True
+    if not final_tags:
+        final_tags = ["untagged"]
+        is_standardized = False
+
+    frontmatter_lines = [
+        "---",
+        f"title: {title}",
+        f"slug: {slug}",
+        f"date: {args.date}",
+        f"source_type: {args.source_type}",
+        f"source_id: {args.source_id}",
+        f"input_hash: {input_hash}",
+        f"generated_at: {dt.datetime.now(dt.timezone.utc).isoformat()}",
+    ]
+    if final_tags:
+        tag_str = ", ".join(f'"{t}"' for t in final_tags)
+        frontmatter_lines.append(f"tags: [{tag_str}]")
+
+    frontmatter_lines.append("---")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    final_text = "\n".join(frontmatter_lines) + "\n\n" + cleaned
+
+    final_output_path.write_text(
+        final_text + ("\n" if not final_text.endswith("\n") else ""),
+        encoding="utf-8",
+    )
+
+    # Update hash index for faster idempotency checks
+    update_report_hash_index(out_dir, input_hash)
+
+    # IMPORTANT: Print the actual path written so workflows can capture it
+    print(f"REPORT_PATH={final_output_path}")
+    print(f"Wrote report: {final_output_path}")
+
+    if not is_standardized:
+        print(
+            "::warning::Generated report missing standard tags/title. Review recommended."
+        )
+        return 2
+
     return 0
 
 

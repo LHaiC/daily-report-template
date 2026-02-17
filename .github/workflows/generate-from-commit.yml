@@ -24,11 +24,11 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Detect newly added scratch files
+      - name: Detect changed scratch files
         id: changed
         run: |
-          # --diff-filter=AR: Added or Renamed files; ignore modifications and deletions
-          CHANGED="$(git diff --diff-filter=AR --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^scratch/' || true)"
+          # --diff-filter=AMR: Added, Modified, Renamed; ignore deletions
+          CHANGED="$(git diff --diff-filter=AMR --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^scratch/' || true)"
           echo "changed<<EOF" >> "$GITHUB_OUTPUT"
           echo "$CHANGED" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
@@ -42,33 +42,86 @@ jobs:
           REPORT_API_AUTH_SCHEME: ${{ vars.REPORT_API_AUTH_SCHEME }}
           REPORT_API_TIMEOUT: ${{ vars.REPORT_API_TIMEOUT }}
           REPORT_API_RESPONSE_PATH: ${{ vars.REPORT_API_RESPONSE_PATH }}
+          REPORT_API_RESPONSE_PATHS: ${{ vars.REPORT_API_RESPONSE_PATHS }}
           REPORT_API_EXTRA_HEADERS_JSON: ${{ vars.REPORT_API_EXTRA_HEADERS_JSON }}
           REPORT_API_REQUEST_TEMPLATE_JSON: ${{ vars.REPORT_API_REQUEST_TEMPLATE_JSON }}
           REPORT_SYSTEM_PROMPT: ${{ vars.REPORT_SYSTEM_PROMPT }}
           REPORT_API_KEY: ${{ secrets.REPORT_API_KEY }}
           SHA: ${{ github.sha }}
+        id: generate_step
         run: |
-          set -euo pipefail
+          set +e
           DATE_UTC="$(date -u +%F)"
           YEAR="$(date -u +%Y)"
           MONTH="$(date -u +%m)"
+          HASH_INDEX="content/daily/${YEAR}/${MONTH}/.report_hashes.json"
+          declare -A KNOWN_HASHES
+
+          if [ -f "$HASH_INDEX" ]; then
+            while IFS= read -r line; do
+              h="${line//[\" ,]/}"
+              [ -n "$h" ] && KNOWN_HASHES["$h"]=1
+            done < "$HASH_INDEX"
+          fi
+          
+          OVERALL_STATUS=0
+          
           while IFS= read -r file; do
             [ -z "$file" ] && continue
+            echo "Processing $file..."
+            
             stem="$(basename "$file")"
             stem="${stem%.*}"
             slug="$(echo "$stem" | tr ' ' '-' | tr -cd '[:alnum:]_-')"
             outdir="content/daily/${YEAR}/${MONTH}"
             mkdir -p "$outdir"
+            
+            # Construct output path with date prefix
             out="${outdir}/${DATE_UTC}-${slug}.md"
+            
+            # Skip if hash already exists in index
+            file_hash="$(python - <<'PY'
+            import sys
+
+            sys.path.append("scripts")
+            from generate_report import compute_hash_bytes
+
+            path = sys.argv[1]
+            with open(path, "rb") as f:
+                data = f.read()
+            print(compute_hash_bytes(data))
+            PY
+            "$file")"
+
+            if [ -n "${KNOWN_HASHES[$file_hash]+x}" ]; then
+              echo "Skipping $file (hash already generated)."
+              continue
+            fi
+
             python scripts/generate_report.py \
               --input "$file" \
               --output "$out" \
               --source-type commit \
-              --source-id "$SHA"
+              --source-id "$SHA" \
+              --date "$DATE_UTC"
+            
+            code=$?
+            
+            if [ $code -eq 1 ]; then
+               echo "::error::Failed to generate report for $file"
+               exit 1
+            elif [ $code -eq 2 ]; then
+               echo "::warning::Report for $file needs review."
+               OVERALL_STATUS=2
+            fi
+            
             echo "Generated $out"
           done <<< "${{ steps.changed.outputs.changed }}"
+          
+          echo "overall_status=$OVERALL_STATUS" >> "$GITHUB_OUTPUT"
 
-      - name: Commit generated reports
+      - name: Commit generated reports (Direct)
+        if: steps.generate_step.outputs.overall_status == '0'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -80,3 +133,41 @@ jobs:
           fi
           git commit -m "auto: generate structured reports from scratch notes [skip ci]"
           git push
+
+      - name: Create PR for Review (Quality Gate)
+        if: steps.generate_step.outputs.overall_status == '2'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          BRANCH_NAME="review/commit-${{ github.sha }}-$(date +%s)"
+          git checkout -b "$BRANCH_NAME"
+          
+          git add content/daily/
+          git commit -m "chore: generated reports needing review (from commit ${{ github.sha }})"
+          git push origin "$BRANCH_NAME"
+          
+          gh pr create \
+            --title "⚠️ Review Needed: Reports from Commit ${{ github.sha }}" \
+            --body "One or more generated reports failed standardization checks. Please review the changes." \
+            --label "needs-review" \
+            --base main \
+            --head "$BRANCH_NAME"
+
+      - name: Comment on Commit (Failure)
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.sha
+            const runId = context.runId
+            
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: sha,
+              body: `❌ Report generation failed. Please check the [Actions Log](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}).`
+            })

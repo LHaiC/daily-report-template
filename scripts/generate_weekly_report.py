@@ -6,13 +6,14 @@ import datetime as dt
 from pathlib import Path
 import re
 import sys
+import subprocess
 from typing import Dict, List, Optional, Tuple
 
 from generate_report import call_cloud_api, getenv
 
 
 DEFAULT_WEEKLY_SYSTEM_PROMPT = """You are a rigorous technical writing assistant.
-Summarize one week of daily reports into a concise weekly report in Markdown.
+Summarize one week of daily reports and git activity into a concise weekly report in Markdown.
 
 Output requirements:
 1) Use this exact section order:
@@ -24,8 +25,8 @@ Output requirements:
    - ## Next Week Plan
    - ## Metrics
 2) Keep it concise and factual.
-3) If information is missing, write "N/A" for that bullet.
-4) Keep language in the same language as input notes when possible.
+3) In the '## Metrics' section, consolidate the provided daily metrics into a summary table or list.
+4) If information is missing, write "N/A" for that bullet.
 5) Return only final answer. Do not include reasoning or thinking process.
 """
 
@@ -80,7 +81,7 @@ def should_run_now() -> bool:
     ):
         return True
 
-    now = dt.datetime.utcnow()
+    now = dt.datetime.now(dt.timezone.utc)
     day = parse_weekday(getenv("REPORT_WEEKLY_DAY", "mon"))
     hour = getenv("REPORT_WEEKLY_HOUR_UTC", "9")
 
@@ -103,31 +104,83 @@ def collect_daily_reports(start: dt.date, end: dt.date) -> List[Path]:
     if not root.exists():
         return []
     paths = []
+    # Use rglob to search recursively in all subdirectories
     for path in root.rglob("*.md"):
         day = parse_day_from_filename(path)
+        # Assuming parse_day_from_filename returns a date object or None
         if day and start <= day <= end:
             paths.append(path)
     return sorted(paths)
 
 
+def extract_metrics_from_dailies(entries: List[Path]) -> str:
+    """Extracts '## Metrics' sections from daily reports."""
+    aggregated_metrics = []
+
+    for path in entries:
+        content = path.read_text(encoding="utf-8")
+        # Look for ## Metrics until the next ## Header or End of String
+        match = re.search(r"## Metrics\s*\n(.*?)(?=\n##|$)", content, re.DOTALL)
+        if match:
+            metrics_text = match.group(1).strip()
+            if metrics_text and "N/A" not in metrics_text:
+                day_str = parse_day_from_filename(path)
+                aggregated_metrics.append(f"**{day_str}**:\n{metrics_text}")
+
+    if not aggregated_metrics:
+        return "No specific metrics found in daily reports."
+
+    return "\n\n".join(aggregated_metrics)
+
+
+def get_git_activity(days: int = 7) -> str:
+    """Fetches git log for the last N days."""
+    try:
+        # Get short hash, commit message, and author name
+        cmd = [
+            "git",
+            "log",
+            f"--since={days} days ago",
+            "--pretty=format:%h %s (%an)",
+            "--no-merges",  # Optional: hide merge commits to reduce noise
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        return "Error fetching git activity (is this a git repo?)"
+    except FileNotFoundError:
+        return "git command not found."
+
+
 def build_user_prompt(
     entries: List[Path], start: dt.date, end: dt.date, week_slug: str
 ) -> str:
+    metrics_summary = extract_metrics_from_dailies(entries)
+    git_log = get_git_activity(days=7)  # Approx 7 days
+
     parts = [
         f"Week: {week_slug}",
         f"Range: {start.isoformat()} to {end.isoformat()}",
         "",
-        "Daily reports:",
+        "### Aggregated Metrics from Daily Reports",
+        metrics_summary,
+        "",
+        "### Git Activity (Commit Log)",
+        git_log if git_log else "No recent git activity.",
+        "",
+        "### Daily Reports Content:",
     ]
     for path in entries:
         text = path.read_text(encoding="utf-8")
-        parts.append(f"\n---\nFile: {path.as_posix()}\n{text}\n")
+        parts.append(f"\n---\nFile: {path.name}\n{text}\n")
+
     parts.append("\nPlease generate a structured weekly report in Markdown.")
     parts.append(
         f"Add a title line at top: '# Weekly Report - {week_slug} ({start.isoformat()} to {end.isoformat()})'."
     )
     parts.append("Use the required section order exactly.")
     parts.append("Use bullet lists in each section.")
+
     return "\n".join(parts)
 
 

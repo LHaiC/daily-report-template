@@ -15,7 +15,8 @@ import html
 import os
 from pathlib import Path
 import re
-from typing import Iterable, List, Dict, Any
+import json
+from typing import Iterable, List, Dict, Any, Set
 
 
 DAILY_ROOT = Path("content/daily")
@@ -39,20 +40,46 @@ def parse_daily_entry(path: Path) -> Dict[str, Any]:
     date_str, slug = m.group(1), m.group(2)
     date = dt.date.fromisoformat(date_str)
     title = slug.replace("-", " ").strip()
+    tags = []
+
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
+        content = path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+
+        # Parse Frontmatter
+        if len(lines) > 0 and lines[0].strip() == "---":
+            for line in lines[1:]:
+                if line.strip() == "---":
+                    break
+                if line.lower().startswith("title:"):
+                    title = line.split(":", 1)[1].strip().strip('"')
+                elif line.lower().startswith("tags:"):
+                    # Basic tag parsing: tags: [foo, bar]
+                    raw_tags = line.split(":", 1)[1].strip()
+                    raw_tags = raw_tags.strip("[]")
+                    tags = [
+                        t.strip().strip('"').strip("'")
+                        for t in raw_tags.split(",")
+                        if t.strip()
+                    ]
+
+        # Fallback title if not in frontmatter
+        if not title or title == slug.replace("-", " "):
+            for line in lines:
                 if line.startswith("# "):
                     title = line[2:].strip()
                     break
+
     except FileNotFoundError:
         pass
+
     iso_year, iso_week, _ = date.isocalendar()
     return {
         "date": date,
         "date_str": date_str,
         "slug": slug,
         "title": title,
+        "tags": tags,
         "path": path,
         "iso_year": iso_year,
         "iso_week": iso_week,
@@ -296,6 +323,58 @@ def build_weekly_pages(
     )
 
 
+def build_search_index(entries: List[Dict[str, Any]]) -> None:
+    search_data = []
+    for e in entries:
+        daily_href = "/daily/{}/{}.html".format(
+            e["date"].strftime("%Y/%m"),
+            e["path"].stem,
+        )
+        search_data.append(
+            {
+                "title": e["title"],
+                "date": e["date_str"],
+                "url": daily_href,
+                "tags": e["tags"],
+            }
+        )
+
+    (SITE_ROOT / "search.json").write_text(json.dumps(search_data), encoding="utf-8")
+
+
+def build_tag_pages(entries: List[Dict[str, Any]]) -> None:
+    tags_map: Dict[str, List[Dict[str, Any]]] = {}
+    for e in entries:
+        for tag in e["tags"]:
+            tags_map.setdefault(tag, []).append(e)
+
+    tags_dir = SITE_ROOT / "tags"
+    ensure_dir(tags_dir)
+
+    for tag, items in tags_map.items():
+        items = sorted(items, key=lambda x: x["date"], reverse=True)
+        tag_items = []
+        for e in items:
+            daily_href = "/daily/{}/{}.html".format(
+                e["date"].strftime("%Y/%m"),
+                e["path"].stem,
+            )
+            tag_items.append(
+                f'<li><a href="{daily_href}">{e["date_str"]}</a> '
+                f'<span class="muted">{html.escape(e["title"])}</span></li>'
+            )
+
+        body = (
+            f'<section class="card"><h1>Tag: {html.escape(tag)}</h1>'
+            f'<ul class="list">{"".join(tag_items)}</ul>'
+            f'<p><a href="/index.html">← Back to Home</a></p>'
+            f"</section>"
+        )
+        (tags_dir / f"{tag}.html").write_text(
+            page_template(f"Tag: {tag}", body), encoding="utf-8"
+        )
+
+
 def build_index(
     entries: List[Dict[str, Any]],
     weekly_entries: List[Dict[str, Any]],
@@ -303,6 +382,7 @@ def build_index(
 ) -> None:
     latest = sorted(entries, key=lambda x: x["date"], reverse=True)[:30]
     daily_items = []
+    # ... existing code ...
     for e in latest:
         daily_href = "/daily/{}/{}.html".format(
             e["date"].strftime("%Y/%m"),
@@ -335,6 +415,44 @@ def build_index(
   </div>
   <div class="hero-meta">Updated: {updated}</div>
 </section>
+
+<section class="card search-section">
+    <input type="text" id="search-input" placeholder="Search titles, tags..." style="width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px;">
+    <ul id="search-results" class="list" style="margin-top: 10px;"></ul>
+</section>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {{
+    const searchInput = document.getElementById('search-input');
+    const resultsList = document.getElementById('search-results');
+    let searchIndex = [];
+
+    fetch('/search.json')
+        .then(response => response.json())
+        .then(data => {{
+            searchIndex = data;
+        }});
+
+    searchInput.addEventListener('input', (e) => {{
+        const query = e.target.value.toLowerCase();
+        resultsList.innerHTML = '';
+        if (query.length < 2) return;
+
+        const filtered = searchIndex.filter(item => 
+            item.title.toLowerCase().includes(query) || 
+            item.tags.some(tag => tag.toLowerCase().includes(query)) ||
+            item.date.includes(query)
+        ).slice(0, 10);
+
+        filtered.forEach(item => {{
+            const li = document.createElement('li');
+            li.innerHTML = `<a href="${{item.url}}">${{item.date}} - ${{item.title}}</a> <span class="muted">[${{item.tags.join(', ')}}]</span>`;
+            resultsList.appendChild(li);
+        }});
+    }});
+}});
+</script>
+
 <section class="grid">
   <div class="card">
     <h2>Latest Entries</h2>
@@ -346,7 +464,7 @@ def build_index(
   </div>
 </section>
 """.format(
-        updated=dt.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+        updated=dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         daily_items="".join(daily_items),
         week_items="".join(week_items),
     )
@@ -372,8 +490,14 @@ def main() -> int:
 
     weekly_entries = build_weekly_archive(entries)
     summary_paths = collect_weekly_summaries()
+
     build_daily_pages(entries)
     build_weekly_pages(weekly_entries, summary_paths)
+
+    # New build steps
+    build_search_index(entries)
+    build_tag_pages(entries)
+
     build_index(entries, weekly_entries, summary_paths)
     return 0
 
