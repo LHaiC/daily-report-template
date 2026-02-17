@@ -82,7 +82,7 @@ jobs:
           git push
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Comment issue with report path
+      - name: Comment, label, and close issue
         if: steps.commit.outputs.changed == 'true'
         uses: actions/github-script@v7
         with:
@@ -90,10 +90,24 @@ jobs:
             const issueNumber = context.payload.issue.number
             const path = `${{ steps.issuefile.outputs.report_path }}`
             const sha = context.sha
+            const owner = context.repo.owner
+            const repo = context.repo.repo
             const body = `Generated structured report:\n\n- \`${path}\`\n- Commit: ${sha}`
             await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
+              owner,
+              repo,
               issue_number: issueNumber,
               body
+            })
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              labels: ["report-generated"]
+            })
+            await github.rest.issues.update({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              state: "closed"
             })
