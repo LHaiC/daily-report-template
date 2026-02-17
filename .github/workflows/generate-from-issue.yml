@@ -100,7 +100,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
           # Check for changes using the dynamic path
-          git add "${{ steps.issuefile.outputs.scratch_path }}" "${{ steps.generate_step.outputs.report_path }}"
+          git add "${{ steps.issuefile.outputs.scratch_path }}" content/daily/ || true
           if git diff --cached --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No changes to commit."
@@ -124,7 +124,7 @@ jobs:
           BRANCH_NAME="review/issue-${{ github.event.issue.number }}-$(date +%s)"
           git checkout -b "$BRANCH_NAME"
           
-          git add "${{ steps.issuefile.outputs.scratch_path }}" "${{ steps.generate_step.outputs.report_path }}"
+          git add "${{ steps.issuefile.outputs.scratch_path }}" content/daily/ || true
           git commit -m "chore: generated report needing review (issue #${{ github.event.issue.number }})"
           git push origin "$BRANCH_NAME"
           
