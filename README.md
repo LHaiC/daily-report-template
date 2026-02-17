@@ -66,7 +66,7 @@ Create environment: `report-gen`
 ## 3) Two ingestion modes
 
 ### Mode A: Commit rough notes
-1. Add **new** rough markdown/txt notes into `scratch/`
+1. Add/Rename **new** rough markdown/txt notes into `scratch/`
 2. Commit and push to `main`
 3. Workflow `generate-from-commit.yml` runs and writes report to `content/daily/YYYY/MM/`
 

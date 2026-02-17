@@ -27,8 +27,8 @@ jobs:
       - name: Detect newly added scratch files
         id: changed
         run: |
-          # --diff-filter=A: only Added files; ignore modifications and deletions
-          CHANGED="$(git diff --diff-filter=A --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^scratch/' || true)"
+          # --diff-filter=AR: Added or Renamed files; ignore modifications and deletions
+          CHANGED="$(git diff --diff-filter=AR --name-only "${{ github.event.before }}" "${{ github.sha }}" | grep '^scratch/' || true)"
           echo "changed<<EOF" >> "$GITHUB_OUTPUT"
           echo "$CHANGED" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
