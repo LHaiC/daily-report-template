@@ -6,7 +6,7 @@ A **GitHub template repository** for technical journaling with a low-friction wo
 - GitHub Actions listens for `push` / `issues` events
 - A Python script calls a **cloud LLM API** (configured via **Environment vars/secrets**)
 - Structured daily report is generated to `content/daily/YYYY/MM/` (archived by year and month)
-- Optional static site publishing (Quartz) can be added later
+- Static site output (local preview + optional GitHub Pages) included
 
 ---
 
@@ -83,7 +83,49 @@ Create environment: `report-gen`
 
 ---
 
-## 4) Local development
+## 4) Weekly archive + static site
+
+Generate weekly rollups and a static HTML site:
+
+```bash
+python scripts/build_site.py
+```
+
+Outputs:
+
+- Weekly markdown: `content/weekly/YYYY/YYYY-WW.md`
+- Static site: `site/`
+
+Local preview options:
+
+```bash
+python -m http.server -d site 8000
+```
+
+Then open `http://localhost:8000`.
+
+To publish on GitHub Pages, point Pages to the `site/` folder or deploy it via a workflow.
+
+## 5) Weekly LLM summary (scheduled)
+
+This workflow summarizes the previous week using the same LLM backend and writes:
+
+`content/weekly/YYYY/YYYY-WW-summary.md`
+
+It runs hourly but only generates when the configured schedule matches.
+
+Environment variables (set in `report-gen`):
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `REPORT_WEEKLY_DAY` | `mon` | Weekday to run (mon..sun or 1..7). |
+| `REPORT_WEEKLY_HOUR_UTC` | `9` | Hour in UTC to run. |
+| `REPORT_WEEKLY_INCLUDE_TODAY` | `false` | Include today's report in the 7-day window. |
+| `REPORT_WEEKLY_SYSTEM_PROMPT` | *(optional)* | Custom system prompt for weekly summary. |
+
+Workflow file: `.github/workflows/generate-weekly-summary.yml`
+
+## 6) Local development
 
 ```bash
 python -m venv .venv
@@ -120,7 +162,7 @@ python scripts/generate_report.py \
 
 ---
 
-## 5) Testing
+## 7) Testing
 
 ```bash
 # Run all tests
@@ -142,7 +184,7 @@ CI workflow is in `.github/workflows/test.yml` (Python 3.11).
 
 ---
 
-## 6) File layout
+## 8) File layout
 
 ```text
 .
@@ -151,6 +193,7 @@ CI workflow is in `.github/workflows/test.yml` (Python 3.11).
 │   └── workflows/
 │       ├── generate-from-commit.yml
 │       ├── generate-from-issue.yml
+│       ├── generate-weekly-summary.yml
 │       └── test.yml
 ├── content/daily/
 │   └── YYYY/
@@ -158,6 +201,7 @@ CI workflow is in `.github/workflows/test.yml` (Python 3.11).
 │           └── YYYY-MM-DD-<slug>.md
 ├── scratch/
 ├── scripts/generate_report.py
+├── scripts/generate_weekly_report.py
 ├── tests/test_generate_report.py
 ├── requirements-dev.txt
 └── README.md
@@ -165,7 +209,7 @@ CI workflow is in `.github/workflows/test.yml` (Python 3.11).
 
 ---
 
-## 7) Notes
+## 9) Notes
 
 - Generated reports are committed by `github-actions[bot]`.
 - Workflow uses `environment: report-gen` so env vars/secrets are loaded from that environment.

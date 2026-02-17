@@ -1,0 +1,60 @@
+name: Generate Weekly Summary
+
+on:
+  schedule:
+    - cron: "0 * * * *"  # hourly; script enforces REPORT_WEEKLY_* schedule
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate-weekly:
+    runs-on: ubuntu-latest
+    environment: report-gen
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate weekly report
+        env:
+          REPORT_API_URL: ${{ vars.REPORT_API_URL }}
+          REPORT_API_MODEL: ${{ vars.REPORT_API_MODEL }}
+          REPORT_API_AUTH_HEADER: ${{ vars.REPORT_API_AUTH_HEADER }}
+          REPORT_API_AUTH_SCHEME: ${{ vars.REPORT_API_AUTH_SCHEME }}
+          REPORT_API_TIMEOUT: ${{ vars.REPORT_API_TIMEOUT }}
+          REPORT_API_RESPONSE_PATH: ${{ vars.REPORT_API_RESPONSE_PATH }}
+          REPORT_API_RESPONSE_PATHS: ${{ vars.REPORT_API_RESPONSE_PATHS }}
+          REPORT_API_EXTRA_HEADERS_JSON: ${{ vars.REPORT_API_EXTRA_HEADERS_JSON }}
+          REPORT_API_REQUEST_TEMPLATE_JSON: ${{ vars.REPORT_API_REQUEST_TEMPLATE_JSON }}
+          REPORT_SYSTEM_PROMPT: ${{ vars.REPORT_SYSTEM_PROMPT }}
+          REPORT_API_KEY: ${{ secrets.REPORT_API_KEY }}
+          REPORT_WEEKLY_SYSTEM_PROMPT: ${{ vars.REPORT_WEEKLY_SYSTEM_PROMPT }}
+          REPORT_WEEKLY_DAY: ${{ vars.REPORT_WEEKLY_DAY }}
+          REPORT_WEEKLY_HOUR_UTC: ${{ vars.REPORT_WEEKLY_HOUR_UTC }}
+          REPORT_WEEKLY_INCLUDE_TODAY: ${{ vars.REPORT_WEEKLY_INCLUDE_TODAY }}
+          REPORT_WEEKLY_ENFORCE_SCHEDULE: "true"
+        run: |
+          set -euo pipefail
+          week_year=$(date -u +%G)
+          week_num=$(date -u +%V)
+          out="content/weekly/${week_year}/${week_year}-W${week_num}-summary.md"
+          python scripts/generate_weekly_report.py --output "$out"
+
+      - name: Commit weekly report
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add content/weekly/ || true
+          if git diff --cached --quiet; then
+            echo "No weekly changes."
+            exit 0
+          fi
+          git commit -m "auto: generate weekly summary [skip ci]"
+          git push
