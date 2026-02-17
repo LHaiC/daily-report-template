@@ -65,6 +65,7 @@ jobs:
           fi
           
           OVERALL_STATUS=0
+          GENERATED_SLUGS=""
           
           while IFS= read -r file; do
             [ -z "$file" ] && continue
@@ -87,14 +88,15 @@ jobs:
               continue
             fi
 
-            python scripts/generate_report.py \
+            OUTPUT=$(python scripts/generate_report.py \
               --input "$file" \
               --output "$out" \
               --source-type commit \
               --source-id "$SHA" \
-              --date "$DATE_UTC"
+              --date "$DATE_UTC")
             
             code=$?
+            echo "$OUTPUT"
             
             if [ $code -eq 1 ]; then
                echo "::error::Failed to generate report for $file"
@@ -104,10 +106,25 @@ jobs:
                OVERALL_STATUS=2
             fi
             
-            echo "Generated $out"
+            report_path="$(echo "$OUTPUT" | grep "^REPORT_PATH=" | cut -d'=' -f2 || echo "")"
+            if [ -n "$report_path" ]; then
+              echo "Generated $report_path"
+              slug_name="$(basename "$report_path" | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}-//' | sed -E 's/\.md$//')"
+            else
+              echo "Generated $out"
+              slug_name=""
+            fi
+            if [ -n "$slug_name" ]; then
+              if [ -n "$GENERATED_SLUGS" ]; then
+                GENERATED_SLUGS="$GENERATED_SLUGS,$slug_name"
+              else
+                GENERATED_SLUGS="$slug_name"
+              fi
+            fi
           done <<< "${{ steps.changed.outputs.changed }}"
           
           echo "overall_status=$OVERALL_STATUS" >> "$GITHUB_OUTPUT"
+          echo "generated_slugs=$GENERATED_SLUGS" >> "$GITHUB_OUTPUT"
 
       - name: Commit generated reports (Direct)
         if: steps.generate_step.outputs.overall_status == '0'
@@ -120,7 +137,12 @@ jobs:
             echo "No generated changes."
             exit 0
           fi
-          git commit -m "auto: generate structured reports from scratch notes [skip ci]"
+          SLUGS="${{ steps.generate_step.outputs.generated_slugs }}"
+          if [ -n "$SLUGS" ]; then
+            git commit -m "auto: generate reports [slugs: $SLUGS] [skip ci]"
+          else
+            git commit -m "auto: generate reports [skip ci]"
+          fi
           git push
 
       - name: Create PR for Review (Quality Gate)
@@ -136,9 +158,15 @@ jobs:
           git checkout -b "$BRANCH_NAME"
           
           git add content/daily/
-          git commit -m "chore: generated reports needing review (from commit ${{ github.sha }})"
+          SLUGS="${{ steps.generate_step.outputs.generated_slugs }}"
+          if [ -n "$SLUGS" ]; then
+            git commit -m "chore: reports need review [slugs: $SLUGS]"
+          else
+            git commit -m "chore: reports need review"
+          fi
           git push origin "$BRANCH_NAME"
           
+          gh label create needs-review --force || true
           gh pr create \
             --title "⚠️ Review Needed: Reports from Commit ${{ github.sha }}" \
             --body "One or more generated reports failed standardization checks. Please review the changes." \
