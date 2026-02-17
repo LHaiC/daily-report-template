@@ -140,6 +140,22 @@ def extract_frontmatter_block(text: str) -> tuple[Dict[str, str], str]:
     return meta, stripped
 
 
+def strip_leading_fields(text: str) -> str:
+    lines = text.splitlines()
+    out = []
+    skipping = True
+    for line in lines:
+        if skipping:
+            if not line.strip():
+                continue
+            lower = line.strip().lower()
+            if lower.startswith("title:") or lower.startswith("tags:"):
+                continue
+            skipping = False
+        out.append(line)
+    return "\n".join(out).lstrip()
+
+
 def strip_frontmatter(text: str) -> str:
     lines = text.splitlines()
     if len(lines) < 3 or lines[0].strip() != "---":
@@ -584,6 +600,7 @@ def main() -> int:
 
     # Clean the text again just in case
     _, _, cleaned = extract_title_tags(text)
+    cleaned = strip_leading_fields(cleaned)
     cleaned = ensure_minimum_sections(cleaned, args.date)
 
     if not title:
