@@ -54,22 +54,25 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import manage_env
 
 
-# Modern color scheme - High contrast for readability
+# ---------------------------------------------------------
+# MAKISE KURISU STYLE: "Deep Logic" Theme
+# ---------------------------------------------------------
 COLORS = {
-    "primary": "#1976D2",  # Darker blue for better contrast
-    "primary_dark": "#0D47A1",
-    "success": "#2E7D32",  # Darker green
-    "warning": "#E65100",  # Darker orange
-    "error": "#C62828",    # Darker red
-    "background": "#F5F5F5",
-    "surface": "#FFFFFF",
-    "text": "#212121",           # Dark text for light backgrounds
-    "text_light": "#FFFFFF",     # Light text for dark backgrounds
-    "text_secondary": "#424242", # Darker gray for better readability
-    "text_muted": "#616161",
-    "border": "#BDBDBD",
+    "primary": "#38bdf8",        # Electric Cyan/Blue (High energy)
+    "primary_dark": "#0ea5e9",   # Deep Sky Blue
+    "primary_dim": "rgba(56, 189, 248, 0.1)", # Transparent accent
+    "success": "#4ade80",        # Neon Green
+    "warning": "#fbbf24",        # Amber
+    "error": "#f87171",          # Soft Red
+    "background": "#0f172a",     # Midnight Blue (The Void)
+    "surface": "#1e293b",        # Slate Blue (Panels/Cards)
+    "surface_bright": "#334155", # Lighter Highlight
+    "text": "#f8fafc",           # Crisp White
+    "text_secondary": "#94a3b8", # Muted Blue-Grey
+    "text_muted": "#64748b",     # Darker Grey
+    "border": "#334155",         # Subtle Separators
+    "input_bg": "#020617",       # Deepest Blue for Input Fields
 }
-
 
 class WorkerThread(QThread):
     finished = Signal(str)
@@ -109,63 +112,72 @@ class WelcomeDialog(QDialog):
             QDialog {{
                 background-color: {COLORS["background"]};
             }}
+            /* Main Buttons */
             QPushButton {{
                 background-color: {COLORS["primary"]};
-                color: {COLORS["text_light"]};
+                color: #0f172a; /* Dark text on bright button for contrast */
                 border: none;
                 border-radius: 8px;
                 padding: 14px 28px;
-                font-weight: 600;
+                font-weight: 700;
                 font-size: 14px;
             }}
             QPushButton:hover {{
                 background-color: {COLORS["primary_dark"]};
             }}
+            /* Outline Buttons */
             QPushButton#secondary {{
                 background-color: transparent;
                 color: {COLORS["primary"]};
                 border: 2px solid {COLORS["primary"]};
             }}
             QPushButton#secondary:hover {{
-                background-color: rgba(25, 118, 210, 0.1);
+                background-color: {COLORS["primary_dim"]};
             }}
+            /* Input Fields - Deep background */
             QLineEdit {{
-                background-color: {COLORS["surface"]};
+                background-color: {COLORS["input_bg"]};
                 border: 2px solid {COLORS["border"]};
                 border-radius: 8px;
                 padding: 12px;
                 font-size: 14px;
                 color: {COLORS["text"]};
+                selection-background-color: {COLORS["primary"]};
+                selection-color: {COLORS["input_bg"]};
             }}
             QLineEdit:focus {{
                 border-color: {COLORS["primary"]};
             }}
+            /* Lists */
             QListWidget {{
                 background-color: {COLORS["surface"]};
                 border: 1px solid {COLORS["border"]};
                 border-radius: 8px;
-                padding: 8px;
+                outline: none;
             }}
             QListWidget::item {{
                 padding: 12px;
                 border-radius: 6px;
-                margin: 4px 0;
+                margin: 4px 8px;
+                color: {COLORS["text"]};
             }}
             QListWidget::item:hover {{
-                background-color: rgba(33, 150, 243, 0.1);
+                background-color: {COLORS["surface_bright"]};
             }}
             QListWidget::item:selected {{
-                background-color: {COLORS["primary"]};
-                color: {COLORS["text_light"]};
+                background-color: {COLORS["primary_dim"]};
+                color: {COLORS["primary"]};
+                border: 1px solid {COLORS["primary"]};
             }}
+            /* Text Labels */
             QLabel {{
                 color: {COLORS["text"]};
             }}
+            /* Cards/Panels */
             QFrame#card {{
                 background-color: {COLORS["surface"]};
                 border: 1px solid {COLORS["border"]};
                 border-radius: 12px;
-                padding: 24px;
             }}
         """)
 
@@ -391,50 +403,55 @@ class FileBrowserDialog(QDialog):
             }}
             QPushButton {{
                 background-color: {COLORS["primary"]};
-                color: {COLORS["text_light"]};
-                border: none;
+                color: #000000;
                 border-radius: 6px;
-                padding: 10px 20px;
-                font-weight: 500;
-            }}
-            QPushButton:hover {{
-                background-color: {COLORS["primary_dark"]};
+                padding: 8px 16px;
+                font-weight: bold;
             }}
             QPushButton#danger {{
+                background-color: rgba(248, 113, 113, 0.2);
+                color: {COLORS["error"]};
+                border: 1px solid {COLORS["error"]};
+            }}
+            QPushButton#danger:hover {{
                 background-color: {COLORS["error"]};
-                color: {COLORS["text_light"]};
+                color: white;
             }}
-            QPushButton#secondary {{
-                background-color: transparent;
-                color: {COLORS["text"]};
-                border: 1px solid {COLORS["border"]};
-            }}
+            /* Table Styling */
             QTableWidget {{
                 background-color: {COLORS["surface"]};
                 border: 1px solid {COLORS["border"]};
                 border-radius: 8px;
                 gridline-color: {COLORS["border"]};
-            }}
-            QTableWidget::item {{
-                padding: 10px;
-            }}
-            QTableWidget::item:selected {{
-                background-color: rgba(33, 150, 243, 0.2);
                 color: {COLORS["text"]};
+                selection-background-color: {COLORS["primary_dim"]};
+                selection-color: {COLORS["primary"]};
             }}
             QHeaderView::section {{
                 background-color: {COLORS["background"]};
-                padding: 12px;
+                padding: 8px;
                 border: none;
-                border-bottom: 2px solid {COLORS["border"]};
+                border-bottom: 2px solid {COLORS["primary"]};
                 font-weight: bold;
-                color: {COLORS["text_secondary"]};
+                color: {COLORS["primary"]};
+            }}
+            /* Scrollbars (Optional refinement) */
+            QScrollBar:vertical {{
+                background: {COLORS["background"]};
+                width: 10px;
+                margin: 0px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {COLORS["surface_bright"]};
+                min-height: 20px;
+                border-radius: 5px;
             }}
             QLineEdit {{
-                background-color: {COLORS["surface"]};
+                background-color: {COLORS["input_bg"]};
                 border: 1px solid {COLORS["border"]};
                 border-radius: 6px;
                 padding: 8px;
+                color: {COLORS["text"]};
             }}
         """)
 
@@ -761,12 +778,13 @@ class MarkdownEditor(QTextEdit):
         self.setFont(font)
         self.setStyleSheet(f"""
             QTextEdit {{
-                background-color: {COLORS["surface"]};
-                border: 1px solid {COLORS["border"]};
-                border-radius: 8px;
-                padding: 12px;
+                background-color: {COLORS["background"]}; /* Deep dark */
+                border: none; /* Clean look */
+                padding: 16px;
                 color: {COLORS["text"]};
-                line-height: 1.6;
+                font-family: "JetBrains Mono", "Consolas", monospace;
+                font-size: 13px;
+                line-height: 1.5;
             }}
         """)
         self.textChanged.connect(self.contentChanged.emit)
@@ -1270,38 +1288,29 @@ class MainWindow(QMainWindow):
             QToolBar {{
                 background-color: {COLORS["surface"]};
                 border-bottom: 1px solid {COLORS["border"]};
-                padding: 8px;
-                spacing: 8px;
+                spacing: 10px;
+                padding: 5px;
             }}
             QToolButton {{
                 background-color: transparent;
-                border: none;
-                border-radius: 6px;
-                padding: 8px 16px;
+                border-radius: 4px;
                 color: {COLORS["text"]};
-                font-weight: 500;
-                font-size: 13px;
+                padding: 6px;
             }}
             QToolButton:hover {{
-                background-color: rgba(25, 118, 210, 0.1);
+                background-color: {COLORS["primary_dim"]};
                 color: {COLORS["primary"]};
             }}
             QStatusBar {{
                 background-color: {COLORS["surface"]};
-                border-top: 1px solid {COLORS["border"]};
                 color: {COLORS["text_secondary"]};
-                padding: 4px;
-                font-size: 12px;
             }}
+            /* The Splitter Handle */
             QSplitter::handle {{
                 background-color: {COLORS["border"]};
+                width: 2px;
             }}
-            QWidget {{
-                color: {COLORS["text"]};
-            }}
-            QLabel {{
-                color: {COLORS["text"]};
-            }}
+            QLabel {{ color: {COLORS["text"]}; }}
         """)
 
     def setup_ui(self):
@@ -1461,70 +1470,69 @@ class MainWindow(QMainWindow):
         md_text = self.editor.toPlainText()
         html = markdown.markdown(md_text, extensions=["fenced_code", "tables", "nl2br"])
 
+        # MAKISE KURISU NOTE: 
+        # I have aligned the HTML CSS with the application's dark theme.
         css = f"""
         <style>
             body {{
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                line-height: 1.8;
-                color: {COLORS["text"]};
-                font-size: 15px;
+                font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                line-height: 1.6;
+                color: {COLORS["text"]}; 
+                background-color: {COLORS["surface"]}; /* Dark background for preview */
+                font-size: 14px;
             }}
-            h1, h2, h3, h4, h5, h6 {{
-                color: #1565C0;
-                margin-top: 24px;
-                margin-bottom: 16px;
+            /* Headers - Cyan/Blue accent */
+            h1, h2, h3 {{
+                color: {COLORS["primary"]};
                 font-weight: 600;
+                margin-top: 20px;
             }}
-            h1 {{ border-bottom: 2px solid #E3F2FD; padding-bottom: 8px; }}
-            h2 {{ border-bottom: 1px solid #E3F2FD; padding-bottom: 6px; }}
+            h1 {{ border-bottom: 1px solid {COLORS["border"]}; padding-bottom: 10px; }}
+            
+            /* Code Blocks - The most important part */
             code {{
-                background-color: #F5F5F5;
-                padding: 3px 6px;
-                border-radius: 4px;
+                background-color: {COLORS["primary_dim"]};
+                color: {COLORS["primary"]};
                 font-family: "JetBrains Mono", Consolas, monospace;
-                font-size: 13px;
-                color: #D32F2F;
+                padding: 2px 4px;
+                border-radius: 4px;
             }}
             pre {{
-                background-color: #263238;
-                color: #EEFFFF;
-                padding: 16px;
+                background-color: {COLORS["background"]}; /* Darker block */
+                border: 1px solid {COLORS["border"]};
+                padding: 15px;
                 border-radius: 8px;
                 overflow-x: auto;
-                line-height: 1.5;
             }}
             pre code {{
                 background-color: transparent;
-                color: inherit;
-                padding: 0;
+                color: {COLORS["text"]};
             }}
+            
+            /* Blockquotes */
             blockquote {{
                 border-left: 4px solid {COLORS["primary"]};
-                margin: 16px 0;
-                padding: 8px 16px;
-                background-color: #E3F2FD;
-                border-radius: 0 8px 8px 0;
+                margin: 0;
+                padding-left: 15px;
+                color: {COLORS["text_secondary"]};
             }}
-            ul, ol {{ padding-left: 24px; }}
-            li {{ margin: 4px 0; }}
+            
+            /* Links */
             a {{ color: {COLORS["primary"]}; text-decoration: none; }}
-            a:hover {{ text-decoration: underline; }}
-            table {{
-                border-collapse: collapse;
-                width: 100%;
-                margin: 16px 0;
+            
+            /* Tables */
+            table {{ border-collapse: collapse; width: 100%; margin: 15px 0; }}
+            th {{ 
+                background-color: {COLORS["background"]}; 
+                color: {COLORS["primary"]};
+                text-align: left; 
+                padding: 10px;
+                border-bottom: 2px solid {COLORS["border"]};
             }}
-            th, td {{
-                border: 1px solid {COLORS["border"]};
-                padding: 12px;
-                text-align: left;
+            td {{ 
+                padding: 10px; 
+                border-bottom: 1px solid {COLORS["border"]}; 
             }}
-            th {{
-                background-color: {COLORS["background"]};
-                font-weight: 600;
-            }}
-            tr:nth-child(even) {{ background-color: #FAFAFA; }}
-            img {{ max-width: 100%; border-radius: 8px; }}
         </style>
         """
         self.preview.setHtml(css + html)
