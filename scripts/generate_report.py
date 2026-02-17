@@ -125,6 +125,21 @@ def parse_frontmatter(text: str) -> Dict[str, str]:
     return data
 
 
+def extract_frontmatter_block(text: str) -> tuple[Dict[str, str], str]:
+    match = re.search(r"^---\s*\n(.*?)\n---\s*\n", text, re.DOTALL)
+    if not match:
+        return {}, text
+    block = match.group(1)
+    meta: Dict[str, str] = {}
+    for line in block.splitlines():
+        if ":" not in line:
+            continue
+        key, val = line.split(":", 1)
+        meta[key.strip().lower()] = val.strip()
+    stripped = text[match.end() :].lstrip()
+    return meta, stripped
+
+
 def strip_frontmatter(text: str) -> str:
     lines = text.splitlines()
     if len(lines) < 3 or lines[0].strip() != "---":
@@ -522,6 +537,8 @@ def main() -> int:
 
     # Parse the returned text to find the "slug" or "title" to determine filename
     meta = parse_frontmatter(text)
+    if not meta:
+        meta, text = extract_frontmatter_block(text)
 
     # 1. Extract Fields
     title = meta.get("title", "")
