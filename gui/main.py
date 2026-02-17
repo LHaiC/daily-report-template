@@ -1676,6 +1676,12 @@ class MainWindow(QMainWindow):
         self.current_file = path
         self.load_note()
 
+    def open_report_for_viewing(self, path: Path):
+        """Open a report file for viewing in the editor."""
+        self.current_file = path
+        self.load_note()
+        QMessageBox.information(self, "Report Opened", f"Opened report for viewing:\n{path.name}")
+
     def on_create_new(self, name: str, date_str: str):
         try:
             path = self.manager.create_scratch_note(name, date_str)
@@ -1691,6 +1697,7 @@ class MainWindow(QMainWindow):
 
     def browse_reports(self):
         dialog = FileBrowserDialog(self.manager, "reports", self)
+        dialog.fileSelected.connect(self.open_report_for_viewing)
         dialog.exec()
 
     def open_sync_dialog(self):

@@ -234,21 +234,36 @@ Date: {date_str}
             raise RuntimeError(f"Git command failed: {e.stderr}")
 
     def sync(self):
-        """Standard sync workflow: Pull -> Add -> Commit -> Push."""
+        """Standard sync workflow: Add -> Commit -> Pull -> Push."""
         logger.info("Syncing repository...")
-        self.run_git_command(["pull", "--rebase"])
+
+        # First, add all changes
         self.run_git_command(["add", "."])
 
+        # Check if there are changes to commit
         status = self.run_git_command(["status", "--porcelain"])
-        if not status:
-            logger.info("Nothing to commit.")
-            return "No changes."
+        if status:
+            # Commit local changes first
+            today = dt.date.today().isoformat()
+            self.run_git_command(["commit", "-m", f"chore: update notes for {today}"])
 
-        today = dt.date.today().isoformat()
-        self.run_git_command(["commit", "-m", f"chore: update notes for {today}"])
+        # Now pull with rebase (no unstaged changes since we committed)
+        try:
+            self.run_git_command(["pull", "--rebase"])
+        except RuntimeError as e:
+            # If pull fails, we might need to abort and retry
+            if "unstaged changes" in str(e).lower():
+                logger.warning("Pull failed due to unstaged changes, stashing and retrying...")
+                self.run_git_command(["stash", "push", "-m", "auto-stash-before-pull"])
+                self.run_git_command(["pull", "--rebase"])
+                self.run_git_command(["stash", "pop"])
+            else:
+                raise
+
+        # Push changes
         self.run_git_command(["push"])
         logger.info("Sync complete.")
-        return "Synced successfully."
+        return "Synced successfully." if status else "No local changes. Synced with remote."
 
     def generate_report(self, input_path: pathlib.Path = None, date_str: str = None, force: bool = False):
         """
