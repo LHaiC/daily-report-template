@@ -36,22 +36,6 @@ def test_ensure_today_note(mock_repo):
     assert "# Notes for" in note_path.read_text()
 
 
-def test_save_image(mock_repo):
-    manager = backend.NoteManager(mock_repo)
-    dummy_image_data = b"\x89PNG\r\n\x1a\n"
-
-    rel_path = manager.save_image(dummy_image_data)
-
-    # Check return format
-    assert rel_path.startswith("assets/")
-    assert rel_path.endswith(".png")
-
-    # Check file existence
-    abs_path = mock_repo / rel_path
-    assert abs_path.exists()
-    assert abs_path.read_bytes() == dummy_image_data
-
-
 def test_generate_report_call(mock_repo):
     manager = backend.NoteManager(mock_repo)
     manager.ensure_today_note()

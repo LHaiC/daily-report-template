@@ -19,11 +19,8 @@ class NoteManager:
         self.repo_root = pathlib.Path(repo_root).resolve()
         self.daily_dir = self.repo_root / "content" / "daily"
         self.scratch_dir = self.repo_root / "scratch"
-        self.assets_dir = self.repo_root / "assets"
-
         # Ensure base directories exist
         self.scratch_dir.mkdir(parents=True, exist_ok=True)
-        self.assets_dir.mkdir(parents=True, exist_ok=True)
 
     def get_today_note_path(self) -> pathlib.Path:
         """Returns path to today's scratch note (YYYY-MM-DD.md)."""
@@ -38,25 +35,6 @@ class NoteManager:
                 f"# Notes for {dt.date.today().isoformat()}\n\n", encoding="utf-8"
             )
         return path
-
-    def save_image(self, image_data: bytes, ext: str = ".png") -> str:
-        """
-        Saves raw image bytes to assets/YYYY/MM/DD/uuid.png
-        Returns the relative path for Markdown insertion.
-        """
-        now = dt.datetime.now()
-        relative_dir = f"{now.year}/{now.month:02d}/{now.day:02d}"
-        target_dir = self.assets_dir / relative_dir
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        filename = f"{uuid.uuid4().hex[:8]}{ext}"
-        filepath = target_dir / filename
-
-        filepath.write_bytes(image_data)
-        logger.info(f"Saved asset: {filepath}")
-
-        # Return path relative to repo root for portable links
-        return f"assets/{relative_dir}/{filename}"
 
     def run_git_command(self, args: list[str]) -> str:
         """Runs a git command in the repo root."""

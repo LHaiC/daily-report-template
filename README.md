@@ -26,7 +26,7 @@ site for browsing.
 
 ---
 
-## Two ways to update your daily report
+## Three ways to update your daily report
 
 ### Mode A (Local-first): commit scratch notes
 
@@ -47,6 +47,12 @@ site for browsing.
    - writes `scratch/issue-<num>.md`
    - generates `content/daily/YYYY/MM/YYYY-MM-DD-<slug>.md`
    - comments back on the issue
+
+### Mode C (GUI): run the local desktop client
+
+1. Install GUI dependencies (see below)
+2. Run `python gui/main.py`
+3. Use the editor to write notes and generate reports
 
 ---
 
@@ -185,6 +191,33 @@ CLI arguments:
 | `--source-type` | no | `manual` | One of `manual`, `commit`, `issue`. |
 | `--source-id` | no | `local` | Free-form source identifier. |
 | `--force` | no | `false` | Force regeneration even if hash matches. |
+
+---
+
+## GUI (Windows/local)
+
+The GUI client is cross-platform and tested on Windows/macOS/Linux. It supports
+live Markdown preview and a local settings dialog for secrets.
+
+### Install (Windows PowerShell)
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r gui/requirements.txt
+```
+
+### Run
+
+```powershell
+python gui\main.py
+```
+
+### Test the GUI backend
+
+```powershell
+python -m pytest tests\test_gui_backend.py
+```
 
 ---
 

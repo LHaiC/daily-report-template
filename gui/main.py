@@ -1,3 +1,4 @@
+import json
 import sys
 import os
 import datetime as dt
@@ -28,8 +29,8 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
 )
 
-from PySide6.QtGui import QAction, QIcon, QKeySequence, QFont, QImage, QTextCursor
-from PySide6.QtCore import Qt, QTimer, QThread, Signal, Slot, QBuffer, QIODevice
+from PySide6.QtGui import QAction, QIcon, QKeySequence, QFont
+from PySide6.QtCore import Qt, QTimer, QThread, Signal
 
 import markdown
 
@@ -61,32 +62,12 @@ class WorkerThread(QThread):
 
 
 class MarkdownEditor(QTextEdit):
-    image_pasted = Signal(bytes)  # Signal to send image data to main window
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAcceptRichText(False)
         font = QFont("Consolas", 11)
         font.setStyleHint(QFont.Monospace)
         self.setFont(font)
-
-    def canInsertFromMimeData(self, source):
-        if source.hasImage():
-            return True
-        return super().canInsertFromMimeData(source)
-
-    def insertFromMimeData(self, source):
-        if source.hasImage():
-            image = QImage(source.imageData())
-            if not image.isNull():
-                # Convert QImage to PNG bytes
-                ba = QBuffer()
-                ba.open(QIODevice.WriteOnly)
-                image.save(ba, "PNG")
-                data = ba.data().data()
-                self.image_pasted.emit(data)
-        else:
-            super().insertFromMimeData(source)
 
 
 class EnvSettingsDialog(QDialog):
@@ -210,7 +191,6 @@ class MainWindow(QMainWindow):
         # Editor
         self.editor = MarkdownEditor(self)
         self.editor.textChanged.connect(self.update_preview)
-        self.editor.image_pasted.connect(self.handle_image_paste)
         splitter.addWidget(self.editor)
 
         # Preview
@@ -254,20 +234,6 @@ class MainWindow(QMainWindow):
         </style>
         """
         self.preview.setHtml(css + html)
-
-    def handle_image_paste(self, image_data: bytes):
-        try:
-            # Save via manager
-            rel_path = self.manager.save_image(image_data)
-
-            # Insert Markdown link at cursor position
-            cursor = self.editor.textCursor()
-            # If standard markdown image syntax
-            text_to_insert = f"\n![]({rel_path})\n"
-            cursor.insertText(text_to_insert)
-            self.status.showMessage(f"Image saved to {rel_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Paste Error", str(e))
 
     def sync_repo(self):
         self.save_note()
