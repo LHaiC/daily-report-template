@@ -1627,6 +1627,20 @@ def main():
     font = QFont("-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif", 10)
     app.setFont(font)
 
+    # Set application-wide palette and stylesheet for consistent theming
+    app.setStyleSheet(f"""
+        QApplication, QWidget {{
+            background-color: {COLORS["background"]};
+            color: {COLORS["text"]};
+        }}
+        QDialog {{
+            background-color: {COLORS["background"]};
+        }}
+        QMainWindow {{
+            background-color: {COLORS["background"]};
+        }}
+    """)
+
     # Initialize manager
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     manager = NoteManager(repo_root)
