@@ -141,24 +141,6 @@ index is missing, the scripts fall back to scanning frontmatter in existing repo
 
 ---
 
-## Repo rename (Auto-Daily-Report)
-
-If you renamed the GitHub repository to `Auto-Daily-Report`, update your local remote:
-
-```bash
-git remote set-url origin git@github.com:<YOUR_USER_OR_ORG>/Auto-Daily-Report.git
-git remote -v
-```
-
-HTTPS alternative:
-
-```bash
-git remote set-url origin https://github.com/<YOUR_USER_OR_ORG>/Auto-Daily-Report.git
-git remote -v
-```
-
----
-
 ## Local development
 
 ```bash
